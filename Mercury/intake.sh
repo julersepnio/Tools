@@ -58,7 +58,7 @@ newIP=0.0.0.0		# New IPMI IP set by the CMDB
 lineNum=`tput lines`
 
 CMDB_HOST="10.0.0.2"
-CMDB_PORT="80808"
+CMDB_PORT="8080"
 CMDB_USER="admin"
 CMDB_PASS="collins123"
 CMDB_HEAD="Accept:text/x-shellscript"
@@ -119,13 +119,18 @@ function getNodeIP {
 
 # Check Node ip powered on
 function checkNodePower {
-	ipmitool -I lanplus -U Administrator -P Administrator -H $1 power status
+	if [ $(ipmitool -I lanplus -U Administrator -P Administrator -H $1 power status | awk '{print $4}') == "on" ]; then
+		node_power_on=1
+	else
+		node_power_on=0
+	fi
+
 }
 
 # Get the Asset Tag
 function getAsset {
-	GET_ASSET_URL= "http://${CMDB_HOST}:${CMDB_PORT}/api/assets?attribute=IPMI_ADDRESS%3B${1}"
-	ASSET_TAG=$(curl -s -H $CMDB_HEAD --basic -u $CMDB_USER:$CMDB_PASS ${GET_ASSET_URL} | grep IPMI_ASSET_TAG | awk -F "=" '{ print $2 }')	
+	GET_ASSET_URL="http://${CMDB_HOST}:${CMDB_PORT}/api/assets?attribute=IPMI_ADDRESS%3B${1}"
+	ASSET_TAG=$(curl -s -H $CMDB_HEAD --basic -u $CMDB_USER:$CMDB_PASS $GET_ASSET_URL | grep IPMI_ASSET_TAG | awk -F "=" '{ print $2 }')	
 	sleep 10
 	ASSET_TAG=${ASSET_TAG//;}
 	ASSET_TAG="${ASSET_TAG%\"}"
@@ -134,17 +139,17 @@ function getAsset {
 
 # Check Asset Tag
 function checkAsset {
-	#CHECK_ASSET_URL="http://${CMDB_HOST}:${CMDB_PORT}/api/assets?attribute=IPMI_ADDRESS%3B${1}"
-	#curl_return_code $(curl --basic -u $CMDB_USER:$CMDB_PASS --write-out %{http_code} -s $CHECK_ASSET_URL)
+	CHECK_ASSET_URL="http://${CMDB_HOST}:${CMDB_PORT}/api/assets?attribute=IPMI_ADDRESS%3B${1}"
+	curl_return_code=$(curl --basic -u $CMDB_USER:$CMDB_PASS --write-out %{http_code} -s $CHECK_ASSET_URL)
 
 	# FOR TEST PURPOSES ONLY
-	CHECK_ASSET_URL="google.com"
-	curl_return_code=$(curl --write-out %{http_code} -s -o /dev/null $CHECK_ASSET_URL)
+	#CHECK_ASSET_URL="google.com"
+	#curl_return_code=$(curl --write-out %{http_code} -s -o /dev/null $CHECK_ASSET_URL)
 }
 
 # Set the Asset RACK POSITION INFO
 function setAsset {
-	SET_ASSET_URL="http://${CMM_HOST}:${CMDB_PORT}/api/asset/${1}"
+	SET_ASSET_URL="http://${CMDB_HOST}:${CMDB_PORT}/api/asset/${1}"
 	SET_ASSET_DATA="attribute=RACK_POSITION_INFO;${2}"
 	curl_return_code=$(curl --basic -u ${CMDB_USER}:${CMDB_PASS} --write-out %{http_code} -s --data-urlencode $SET_ASSET_DATA $SET_ASSET_URL)
 }
@@ -168,66 +173,77 @@ checkHost CMM $CMM_HOST
 
 # Get the Current IPMI of the Board and save in a temp file
 displayStatus "Initializing Temp Files..."
-#getNodeIP $oldIPTempFile
-#oldIP=`cat ${oldIPTempFile}`
+getNodeIP $oldIPTempFile
+oldIP=`cat ${oldIPTempFile}`
 
 # Initialize the New IPMI Temp file
-#newIP=$oldIP
-#echo $newIP > $newIPTempFile
+newIP=$oldIP
+echo $newIP > $newIPTempFile
 
 # Power up the Node
 displayStatus "Powering Node ${BOARD}..."
 echo -e "===============POWER STATUS================="
 
-#ipmitool -I lanplus -U Administrator -P Administrator -H ${oldIP} power on
+ipmitool -I lanplus -U Administrator -P Administrator -H ${oldIP} power on
 sleep 5
 
 # Check the Node Status
 displayStatus "Checking Node ${BOARD} if up..."
-#checkNodePower ${oldIP}
-echo "[   OK   ] :: Node is powered up"
-echo -e "============================================\n"
-sleep 5
+checkNodePower ${oldIP}
+if [ $node_power_on -eq 1 ]; then	
+	echo "[   OK   ] :: Node is powered up"
+	echo -e "============================================\n"
+	sleep 5
+else
+	echo "[ FAILED ] :: Node  failed to power up"
+	echo -e "============================================\n"
+	exit 1
+fi
 
 # Wait for the CMDB to allocate the new address to the node
 while [ $oldIP == $newIP ];do
-	#getNodeIP $newIPTempFile
+	getNodeIP $newIPTempFile
 
 	# FOR TEST PURPOSES ONLY
-	if [ $ip_change_counter -eq "10" ]; then
-		newIP=10.0.0.2
-	fi
+	#if [ $ip_change_counter -eq "10" ]; then
+	#	newIP=10.0.0.2
+	#fi
 
+	newIP=`cat $newIPTempFile`
 	displayStatus "Waiting for the new IP address ($ip_change_counter)"
 	echo -e "=================IP MONITOR================="
 	echo "Current IP: ${oldIP}"
 	ip_change_counter=$(($ip_change_counter+5))
 	echo "New IP:     ${newIP}"
 	echo -e "============================================\n"
-	tput cuu 2
+	tput sc
+	tput cuu 5
 	sleep 1
 done
+tput rc
 displayStatus "New IP address allocated..."
-sleep 1
+sleep 3
 
+clear
 # Check whether the new IP Address is reachable
 displayStatus "Checking the new IP address..."
 checkHost "${newIP}" "${newIP}"
 
 # If IP check failed, re-fetch the new IP
 while ! ping -c 1 ${newIP} >/dev/null 2>&1 ; do
-	# newIP=`cat ${newIPTempFile}`
+	getNodeIP $newIPTempFile
+	newIP=`cat ${newIPTempFile}`
 
 	# FOR TEST PURPOSES ONLY
-	if [ $ip_check_counter == "3" ];then
-		newIP=208.67.222.222
-	fi
+	#if [ $ip_check_counter == "3" ];then
+	#	newIP=208.67.222.222
+	#fi
 	ip_check_counter=$(($ip_check_counter+1))
 	displayStatus "Checking the new IP (${ip_check_counter})"
 done
 	
 displayStatus "New IP is now reachable..."
-tput cuu 7; echo "New IP:     ${newIP} >> Replaced"
+tput cuu 7; tput el; echo "New IP:     ${newIP} >> Replaced"
 echo -e "============================================\n"
 tput ed
 checkHost "NODE" "${newIP}"
@@ -235,7 +251,7 @@ sleep 1
 
 # Get the ASSET TAG
 displayStatus "Getting the Asset Tag for ${newIP}"
-#getAsset ${newIP}
+getAsset ${newIP}
 echo "====================ASSET==================="
 echo "Board:    ${BOARD}"
 echo "IP:       ${newIP}"
@@ -244,25 +260,31 @@ echo "Position: ${RACK_POS}"
 echo -e "============================================\n"
 
 # Check the Asset
+#set -x
 displayStatus "Checking if ${ASSET_TAG} exists..."
 checkAsset $ASSET_TAG
-echo "Check Return Code: "$curl_return_code
-setAsset ${ASSET_TAG} ${RACK_POS}
-while [ $curl_return_code -ne "200" ]; do
-	displayStatus "Asset ${ASSET_TAG} not set... Retrying ${set_asset_counter}"
-	echo "Asset ${ASSET_TAG} not set... Retrying ${set_asset_counter}"
-	sleep 1
-	setAsset ${ASSET_TAG} ${RACK_POS}
-
+echo "CHECK Return Code: ${curl_return_code}"
+sleep 3
+setAsset $ASSET_TAG $RACK_POS
+echo "SET Return Code: ${curl_return_code}"
+#while [ $curl_return_code -ne "200" ]; do
+#	displayStatus "Asset ${ASSET_TAG} not set... Retrying ${set_asset_counter}"
+#	echo "Return Code: ${curl_return_code} | Asset ${ASSET_TAG} not set... Retrying ${set_asset_counter}"
+#	sleep 1
+#	setAsset ${ASSET_TAG} ${RACK_POS}
+#	tput cuu 1
 	# FOR TEST PURPOSES ONLY
-	set_asset_counter=$(($set_asset_counter+1))
-	if [ $set_asset_counter -eq "5" ]; then
-		curl_return_code=200;
-	fi
-done
+	#set_asset_counter=$(($set_asset_counter+1))
+	#if [ $set_asset_counter -eq "5" ]; then
+	#	curl_return_code=200;
+	#fi
+#done
+#tput el; echo "Return Code: ${curl_return_code}"
 
 # Display Status To Finished
+rm $oldIPTempFile
+rm $newIPTempFile
 displayStatus "Asset Intake for Node ${BOARD} Finished"
-echo "===================END======================"
+tput el; echo "===================END======================"
 exit 0
 
