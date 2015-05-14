@@ -35,7 +35,7 @@ profile=$2
 
 /usr/bin/expect << EOD 
 set timeout -1
-spawn `pwd`/provision_base.sh $asset $profile
+spawn /Users/julersepnio/Github/Tools/Collins/provision_base.sh $asset $profile
 
 expect {
 	"*ARE YOU SURE?"

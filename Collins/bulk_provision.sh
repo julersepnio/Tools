@@ -33,20 +33,23 @@ end_line=$2
 file=$3
 profile=$4
 tmpFile="/tmp/OngoingProvision"
+counter=$start_line
 
-echo "========== Installation Request for Nodes ${start_line} to ${end_line} Starting =========="
+echo -e "\n\n\n========== Installation Request for Nodes ${start_line} to ${end_line} Starting =========="
 
-echo -e "Generating the Batch of Asset File...\n"
+echo -e "\nGenerating the Batch of Asset File...\n"
 
 awk "NR >= $start_line; NR == $end_line {exit}" $file > $tmpFile
 
 echo -e "Commencing Provision...\n"
 
 while read tag; do
-	echo -e "Doing Asset ${tag} ****************************************************************\n\n"
-	./provision.sh $tag $profile
-	echo -e "Request for Asset ${tag} Complete,.. Sleeping for moment\n\n"
+	echo -e "Doing Node ${counter} || Asset ${tag} ****************************************************************\n\n"
+	sleep 1
+	/Users/julersepnio/Github/Tools/Collins/provision.sh $tag $profile
+	echo -e "\n\nRequest for Node ${counter} || Asset ${tag} Complete,.. Sleeping for a moment\n\n"
+	counter=$(($counter+1))
 	sleep 25
 done < $tmpFile
 
-echo "========== Installation Request for Nodes ${start_line} to ${end_line} Complete =========="
+echo -e "\n\n\n========== Installation Request for Nodes ${start_line} to ${end_line} Complete =========="
