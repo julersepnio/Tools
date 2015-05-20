@@ -47,7 +47,7 @@ while read tag; do
 	echo -e "Doing Node ${counter} || Asset ${tag} ****************************************************************\n\n"
 	sleep 1
 	/Users/julersepnio/Github/Tools/Collins/provision.sh $tag $profile
-	echo -e "\n\nRequest for Node ${counter} || Asset ${tag} Complete,.. Sleeping for a moment\n\n"
+	echo -e "\n\n[ OK ] Request for Node ${counter} || Asset ${tag} Complete,.. Sleeping for a moment\n\n"
 	counter=$(($counter+1))
 	sleep 25
 done < $tmpFile
